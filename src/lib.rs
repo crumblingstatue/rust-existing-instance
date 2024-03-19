@@ -8,7 +8,10 @@
 
 use {
     interprocess::local_socket::{LocalSocketListener, LocalSocketStream},
-    std::io::{Read, Write},
+    std::{
+        io::{Read, Write},
+        time::{Duration, Instant},
+    },
 };
 
 use std::io::ErrorKind;
@@ -159,5 +162,26 @@ pub fn establish_endpoint(id: &str, nonblocking: bool) -> std::io::Result<Endpoi
             }
             _ => Err(e),
         },
+    }
+}
+
+/// Try to wait to be the new instance
+/// with a configurable timeout and sleep interval between attempts.
+pub fn wait_to_be_new(
+    id: &str,
+    nonblocking: bool,
+    sleep_ms: u64,
+    timeout_ms: u64,
+) -> std::io::Result<Listener> {
+    let start = Instant::now();
+    loop {
+        match establish_endpoint(id, nonblocking)? {
+            Endpoint::New(listener) => return Ok(listener),
+            Endpoint::Existing(_) => {}
+        }
+        std::thread::sleep(Duration::from_millis(sleep_ms));
+        if start.elapsed().as_millis() > timeout_ms as u128 {
+            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        }
     }
 }
