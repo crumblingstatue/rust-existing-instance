@@ -1,0 +1,12 @@
+[package]
+name = "existing_instance"
+version = "0.1.0"
+edition = "2021"
+description = "Check if there is an existing instance of your application, optionally send a message"
+
+[dependencies]
+interprocess = { version = "1.2.1", default-features = false }
+log = "0.4.21"
+
+[dev-dependencies]
+env_logger = "0.11.3"
