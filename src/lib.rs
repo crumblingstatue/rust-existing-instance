@@ -42,7 +42,7 @@ impl Listener {
 }
 
 /// Message between two processes
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[repr(u8)]
 pub enum Msg {
     /// A number
