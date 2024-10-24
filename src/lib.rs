@@ -58,6 +58,8 @@ pub enum Msg {
     Bytes(Vec<u8>),
     /// UTF-8 string
     String(String),
+    /// Empty payload
+    Nudge,
 }
 
 fn write_u8(num: u8, stream: &mut local_socket::Stream) -> std::io::Result<()> {
@@ -90,7 +92,7 @@ fn read_vec(stream: &mut local_socket::Stream) -> std::io::Result<Vec<u8>> {
 }
 
 impl Msg {
-    fn discriminant(&self) -> u8 {
+    const fn discriminant(&self) -> u8 {
         unsafe { *(self as *const Self as *const u8) }
     }
     fn write(self, stream: &mut local_socket::Stream) {
@@ -111,6 +113,7 @@ impl Msg {
                 log::debug!("Wrote byte length: {}", str.len());
                 stream.write_all(str.as_bytes()).unwrap();
             }
+            Msg::Nudge => {}
         }
     }
     fn read(stream: &mut local_socket::Stream) -> std::io::Result<Self> {
@@ -124,6 +127,7 @@ impl Msg {
                 let bytes = read_vec(stream)?;
                 Ok(Self::String(String::from_utf8_lossy(&bytes).into_owned()))
             }
+            3 => Ok(Self::Nudge),
             etc => panic!("Unknown message discriminant {etc}"),
         }
     }

@@ -15,9 +15,13 @@ fn main() {
         }
         existing_instance::Endpoint::Existing(mut stream) => {
             eprintln!("Existing instance detected. Sending message.");
-            stream.send(Msg::String(
-                std::env::args().nth(1).unwrap_or("Default message".into()),
-            ))
+            let mut args = std::env::args().skip(1);
+            let payload = match args.next().as_deref() {
+                Some("num") => Msg::Num(args.next().unwrap().parse().unwrap()),
+                Some(arg) => Msg::String(arg.to_string()),
+                None => Msg::Nudge,
+            };
+            stream.send(payload);
         }
     }
 }
