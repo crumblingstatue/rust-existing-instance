@@ -7,7 +7,11 @@
 #![warn(missing_docs)]
 
 use {
-    interprocess::local_socket::{LocalSocketListener, LocalSocketStream},
+    interprocess::local_socket::{
+        self,
+        traits::{Listener as _, Stream as _},
+        GenericNamespaced, ListenerNonblockingMode, ListenerOptions, ToNsName,
+    },
     std::{
         io::{Read, Write},
         time::{Duration, Instant},
@@ -25,7 +29,7 @@ pub enum Endpoint {
 }
 
 /// IPC listener to listen to incoming connections
-pub struct Listener(LocalSocketListener);
+pub struct Listener(local_socket::Listener);
 
 impl Listener {
     /// Accept an incoming connection.
@@ -56,28 +60,28 @@ pub enum Msg {
     String(String),
 }
 
-fn write_u8(num: u8, stream: &mut LocalSocketStream) -> std::io::Result<()> {
+fn write_u8(num: u8, stream: &mut local_socket::Stream) -> std::io::Result<()> {
     stream.write_all(std::slice::from_ref(&num))
 }
 
-fn read_u8(stream: &mut LocalSocketStream) -> std::io::Result<u8> {
+fn read_u8(stream: &mut local_socket::Stream) -> std::io::Result<u8> {
     let mut num: u8 = 0;
     stream.read_exact(std::slice::from_mut(&mut num))?;
     Ok(num)
 }
 
-fn write_usize(num: usize, stream: &mut LocalSocketStream) -> std::io::Result<()> {
+fn write_usize(num: usize, stream: &mut local_socket::Stream) -> std::io::Result<()> {
     let bytes = num.to_le_bytes();
     stream.write_all(&bytes)
 }
 
-fn read_usize(stream: &mut LocalSocketStream) -> std::io::Result<usize> {
+fn read_usize(stream: &mut local_socket::Stream) -> std::io::Result<usize> {
     let mut buf = [0; std::mem::size_of::<usize>()];
     stream.read_exact(&mut buf)?;
     Ok(usize::from_le_bytes(buf))
 }
 
-fn read_vec(stream: &mut LocalSocketStream) -> std::io::Result<Vec<u8>> {
+fn read_vec(stream: &mut local_socket::Stream) -> std::io::Result<Vec<u8>> {
     let len = read_usize(stream)?;
     log::debug!("read_vec: length: {len}");
     let mut buf = vec![0; len];
@@ -89,7 +93,7 @@ impl Msg {
     fn discriminant(&self) -> u8 {
         unsafe { *(self as *const Self as *const u8) }
     }
-    fn write(self, stream: &mut LocalSocketStream) {
+    fn write(self, stream: &mut local_socket::Stream) {
         let discriminant = self.discriminant();
         log::debug!("Writing discriminant {discriminant}");
         write_u8(discriminant, stream).unwrap();
@@ -109,7 +113,7 @@ impl Msg {
             }
         }
     }
-    fn read(stream: &mut LocalSocketStream) -> std::io::Result<Self> {
+    fn read(stream: &mut local_socket::Stream) -> std::io::Result<Self> {
         let discriminant = read_u8(stream)?;
         log::debug!("Read discriminant {discriminant}");
         match discriminant {
@@ -126,7 +130,7 @@ impl Msg {
 }
 
 /// IPC message stream with a simple protocol
-pub struct Stream(LocalSocketStream);
+pub struct Stream(local_socket::Stream);
 
 impl Stream {
     /// Send a message to the recipient
@@ -149,16 +153,22 @@ impl Stream {
 ///
 /// The id should be a string unique to your application that's valid as a file name.
 pub fn establish_endpoint(id: &str, nonblocking: bool) -> std::io::Result<Endpoint> {
-    // Using interprocess crate's namespace syntax
-    let namespace_name = format!("@{id}");
-    match LocalSocketStream::connect(&namespace_name[..]) {
+    let ns_name = id.to_ns_name::<GenericNamespaced>()?;
+    match local_socket::Stream::connect(ns_name.clone()) {
         Ok(stream) => Ok(Endpoint::Existing(Stream(stream))),
         Err(e) => match e.kind() {
             ErrorKind::NotFound | ErrorKind::ConnectionRefused => {
-                let socket = LocalSocketListener::bind(&namespace_name[..])?;
-                socket.set_nonblocking(nonblocking)?;
-                log::info!("Established new endpoint with name {namespace_name}");
-                Ok(Endpoint::New(Listener(socket)))
+                let nb_mode = if nonblocking {
+                    ListenerNonblockingMode::Both
+                } else {
+                    ListenerNonblockingMode::Neither
+                };
+                let listener = ListenerOptions::default()
+                    .name(ns_name.clone())
+                    .nonblocking(nb_mode)
+                    .create_sync()?;
+                log::info!("Established new endpoint with name {ns_name:?}");
+                Ok(Endpoint::New(Listener(listener)))
             }
             _ => Err(e),
         },
