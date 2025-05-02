@@ -8,9 +8,8 @@
 
 use {
     interprocess::local_socket::{
-        self,
+        self, GenericNamespaced, ListenerNonblockingMode, ListenerOptions, ToNsName,
         traits::{Listener as _, Stream as _},
-        GenericNamespaced, ListenerNonblockingMode, ListenerOptions, ToNsName,
     },
     std::{
         io::{Read, Write},
