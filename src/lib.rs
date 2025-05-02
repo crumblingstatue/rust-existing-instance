@@ -4,7 +4,7 @@
 //! This library deliberately aims to be simple and lightweight, so it **only supports
 //! a single existing instance**.
 
-#![warn(missing_docs)]
+#![warn(missing_docs, clippy::pedantic)]
 
 use {
     interprocess::local_socket::{
@@ -92,7 +92,7 @@ fn read_vec(stream: &mut local_socket::Stream) -> std::io::Result<Vec<u8>> {
 
 impl Msg {
     const fn discriminant(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
+        unsafe { *std::ptr::from_ref(self).cast() }
     }
     fn write(self, stream: &mut local_socket::Stream) {
         let discriminant = self.discriminant();
@@ -132,13 +132,22 @@ impl Msg {
     }
 }
 
+// Preferably test this with `cargo miri test`
+#[test]
+fn test_msg_discriminant() {
+    assert_eq!(Msg::Num(42).discriminant(), 0);
+    assert_eq!(Msg::Bytes(vec![42]).discriminant(), 1);
+    assert_eq!(Msg::String("Hello world".into()).discriminant(), 2);
+    assert_eq!(Msg::Nudge.discriminant(), 3);
+}
+
 /// IPC message stream with a simple protocol
 pub struct Stream(local_socket::Stream);
 
 impl Stream {
     /// Send a message to the recipient
     pub fn send(&mut self, msg: Msg) {
-        msg.write(&mut self.0)
+        msg.write(&mut self.0);
     }
     /// Receive a message, if any
     pub fn recv(&mut self) -> Option<Msg> {
@@ -155,6 +164,11 @@ impl Stream {
 /// Connect to an existing instance, or establish self as the existing instance
 ///
 /// The id should be a string unique to your application that's valid as a file name.
+///
+/// # Errors
+///
+/// - If `id` can't be converted into a valid socket name
+/// - If connecting to the socket fails for whatever reason
 pub fn establish_endpoint(id: &str, nonblocking: bool) -> std::io::Result<Endpoint> {
     let ns_name = id.to_ns_name::<GenericNamespaced>()?;
     match local_socket::Stream::connect(ns_name.clone()) {
@@ -180,6 +194,10 @@ pub fn establish_endpoint(id: &str, nonblocking: bool) -> std::io::Result<Endpoi
 
 /// Try to wait to be the new instance
 /// with a configurable timeout and sleep interval between attempts.
+///
+/// # Errors
+///
+/// Errors if endpoint can't be established, or the connection times out
 pub fn wait_to_be_new(
     id: &str,
     nonblocking: bool,
@@ -193,7 +211,7 @@ pub fn wait_to_be_new(
             Endpoint::Existing(_) => {}
         }
         std::thread::sleep(Duration::from_millis(sleep_ms));
-        if start.elapsed().as_millis() > timeout_ms as u128 {
+        if start.elapsed().as_millis() > u128::from(timeout_ms) {
             return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
         }
     }
