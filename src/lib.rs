@@ -4,7 +4,7 @@
 //! This library deliberately aims to be simple and lightweight, so it **only supports
 //! a single existing instance**.
 
-#![warn(missing_docs, clippy::pedantic)]
+#![warn(missing_docs, clippy::pedantic, clippy::use_self)]
 
 use {
     interprocess::local_socket::{
@@ -99,20 +99,20 @@ impl Msg {
         log::debug!("Writing discriminant {discriminant}");
         write_u8(discriminant, stream).unwrap();
         match self {
-            Msg::Num(n) => {
+            Self::Num(n) => {
                 write_usize(n, stream).unwrap();
             }
-            Msg::Bytes(bytes) => {
+            Self::Bytes(bytes) => {
                 write_usize(bytes.len(), stream).unwrap();
                 log::debug!("Wrote byte length: {}", bytes.len());
                 stream.write_all(&bytes).unwrap();
             }
-            Msg::String(str) => {
+            Self::String(str) => {
                 write_usize(str.len(), stream).unwrap();
                 log::debug!("Wrote byte length: {}", str.len());
                 stream.write_all(str.as_bytes()).unwrap();
             }
-            Msg::Nudge => {}
+            Self::Nudge => {}
         }
     }
     fn read(stream: &mut local_socket::Stream) -> std::io::Result<Self> {
