@@ -3,6 +3,8 @@ name = "existing_instance"
 version = "0.1.0"
 edition = "2024"
 description = "Check if there is an existing instance of your application, optionally send a message"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crumblingstatue/rust-existing-instance"
 
 [dependencies]
 interprocess = { version = "2.2.1", default-features = false }
